@@ -1,0 +1,1 @@
+Nota: mantener variables de puertos como number individuales para cada servicio (Nginx, Grafana, apps)
