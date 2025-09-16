@@ -24,3 +24,10 @@ terraform init
 terraform workspace new dev   # primera vez
 terraform workspace select dev
 terraform apply -auto-approve
+```
+## Integrantes
+Rodríguez Ruiz Alessandro Paul
+Kristel Rivera Chamorro
+Brad Barrios Capa  
+Mc Brenk Ponce Vázques
+Darli Manuel Medina Sixce
