@@ -1,1 +1,157 @@
-El docker_container para Nginx funciona bien, pero puede mejorarse haciéndolo más seguro, flexible y fácil de mantener: lo ideal es usar un mapa de puertos por workspace para que cada entorno tenga definido su valor sin confusiones, aplicar la función lookup() para evitar errores si falta una clave y establecer un valor por defecto, mejorar el nombre dinámico para que en el workspace default no aparezca con un sufijo innecesario y, finalmente, añadir etiquetas (labels) que permitan organizar e identificar fácilmente los contenedores en Docker; con estos ajustes la infraestructura se vuelve más profesional, escalable y clara para cualquier miembro del equipo
+# ===============================
+# Imágenes locales de las apps
+# (se construyen con Dockerfile propio)
+# ===============================
+
+# Construye la imagen local para app1
+resource "docker_image" "app1" {
+  name = "app1-${terraform.workspace}"    # Nombre de la imagen (incluye el workspace: dev, qa, prod)
+  build {
+    context    = "${local.apps_root}/app1" # Carpeta con el código fuente de app1
+    dockerfile = "Dockerfile"              # Archivo Dockerfile usado para construir la imagen
+  }
+}
+
+# Construye la imagen local para app2
+resource "docker_image" "app2" {
+  name = "app2-${terraform.workspace}"    
+  build {
+    context    = "${local.apps_root}/app2" # Carpeta con el código fuente de app2
+    dockerfile = "Dockerfile"
+  }
+}
+
+# Construye la imagen local para app3
+resource "docker_image" "app3" {
+  name = "app3-${terraform.workspace}"    
+  build {
+    context    = "${local.apps_root}/app3" # Carpeta con el código fuente de app3
+    dockerfile = "Dockerfile"
+  }
+}
+
+# ===============================
+# Redis y Postgres (red persistence_net)
+# ===============================
+
+# Contenedor de Redis
+resource "docker_container" "redis" {
+  name  = "redis-${terraform.workspace}"   # Nombre del contenedor
+  image = "redis:bookworm"                 # Imagen oficial de Redis (Debian bookworm)
+
+  mounts {                                 # Volumen para persistencia de datos
+    target = "/data"                       # Ruta dentro del contenedor
+    source = docker_volume.redis_data.name # Nombre del volumen en host
+    type   = "volume"
+  }
+
+  networks_advanced { name = docker_network.persistence_net.name } # Conectado a red de persistencia
+}
+
+# Contenedor de Postgres
+resource "docker_container" "postgres" {
+  name  = "postgres-${terraform.workspace}" # Nombre del contenedor
+  image = "postgres:bookworm"               # Imagen oficial de Postgres (Debian bookworm)
+
+  env = [                                   # Variables de entorno para inicializar BD
+    "POSTGRES_USER=${var.pg_user}",
+    "POSTGRES_PASSWORD=${var.pg_password}",
+    "POSTGRES_DB=${var.pg_db}",
+  ]
+
+  mounts {                                  # Volumen para persistencia de datos
+    target = "/var/lib/postgresql/data"
+    source = docker_volume.pg_data.name
+    type   = "volume"
+  }
+
+  networks_advanced { name = docker_network.persistence_net.name } # Conectado a red de persistencia
+}
+
+# ===============================
+# Variables comunes para apps Node
+# ===============================
+locals {
+  app_common_env = [                         # Variables de entorno compartidas
+    "PORT=3000",                             # Puerto interno
+    "HOST=0.0.0.0",                          # Escucha en todas las interfaces
+    "REDIS_URL=redis://redis-${terraform.workspace}:6379", # URL de Redis
+    "PGHOST=postgres-${terraform.workspace}",             # Host de Postgres
+    "PGUSER=${var.pg_user}",                             # Usuario Postgres
+    "PGPASSWORD=${var.pg_password}",                     # Password Postgres
+    "PGDATABASE=${var.pg_db}",                           # Base de datos
+    "PGPORT=5432",                                       # Puerto Postgres
+  ]
+}
+
+# ===============================
+# Apps Node.js
+# ===============================
+
+# Contenedor de app1
+resource "docker_container" "app1" {
+  name  = "app1-${terraform.workspace}"       # Nombre del contenedor
+  image = docker_image.app1.name              # Usa la imagen construida previamente
+  env   = local.app_common_env                # Variables comunes
+
+  ports {                                     # Mapea puerto interno → externo
+    internal = 3000
+    external = var.web_server_ports_external + 1
+  }
+
+  networks_advanced { name = docker_network.app_net.name }         # Red de apps
+  networks_advanced { name = docker_network.persistence_net.name } # Red de persistencia
+
+  depends_on = [docker_container.redis, docker_container.postgres] # Espera a Redis y Postgres
+}
+
+# Contenedor de app2
+resource "docker_container" "app2" {
+  name  = "app2-${terraform.workspace}"
+  image = docker_image.app2.name
+  env   = local.app_common_env
+
+  ports {
+    internal = 3000
+    external = var.web_server_ports_external + 2
+  }
+
+  networks_advanced { name = docker_network.app_net.name }
+  networks_advanced { name = docker_network.persistence_net.name }
+
+  depends_on = [docker_container.redis, docker_container.postgres]
+}
+
+# Contenedor de app3
+resource "docker_container" "app3" {
+  name  = "app3-${terraform.workspace}"
+  image = docker_image.app3.name
+  env   = local.app_common_env
+
+  ports {
+    internal = 3000
+    external = var.web_server_ports_external + 3
+  }
+
+  networks_advanced { name = docker_network.app_net.name }
+  networks_advanced { name = docker_network.persistence_net.name }
+
+  depends_on = [docker_container.redis, docker_container.postgres]
+}
+
+# ===============================
+# Grafana (monitoring)
+# ===============================
+resource "docker_container" "grafana" {
+  name  = "grafana-${terraform.workspace}"  # Nombre del contenedor
+  image = "grafana/grafana-oss:11.2.0"      # Imagen oficial de Grafana OSS
+
+  ports {
+    internal = 3000                         # Puerto interno por defecto de Grafana
+    external = var.web_server_ports_external # Puerto externo definido en variables
+  }
+
+  networks_advanced { name = docker_network.monitor_net.name } # Red de monitoreo
+  networks_advanced { name = docker_network.app_net.name }     # Red de apps
+}
+
