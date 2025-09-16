@@ -1,0 +1,26 @@
+# Usa el puerto base definido en la variable web_server_ports_external
+output "grafana_url" {
+  value = "http://localhost:${var.web_server_ports_external}"
+}
+# URL de la App1
+# Suma +1 al puerto base para asignarlo a esta app
+output "app1_url" {
+  value = "http://localhost:${var.web_server_ports_external + 1}"
+}
+# URL de la App2
+# Suma +2 al puerto base para asignarlo a esta app
+output "app2_url" {
+  value = "http://localhost:${var.web_server_ports_external + 2}"
+}
+# URL de la App3
+# Suma +3 al puerto base para asignarlo a esta app
+output "app3_url" {
+  value = "http://localhost:${var.web_server_ports_external + 3}"
+}
+# URL de Nginx
+# Usa el puerto definido en el mapa nginx_external_port
+# tomando el valor que corresponda al workspace actual (dev, qa, prod)
+output "nginx_url" {
+  value = "http://localhost:${var.nginx_external_port[terraform.workspace]}"
+}
+Nota: mantener variables de puertos como number individuales para cada servicio (Nginx, Grafana, apps)
