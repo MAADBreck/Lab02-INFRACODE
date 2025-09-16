@@ -155,3 +155,4 @@ resource "docker_container" "grafana" {
   networks_advanced { name = docker_network.app_net.name }     # Red de apps
 }
 
+
